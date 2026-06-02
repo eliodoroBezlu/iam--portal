@@ -12,7 +12,7 @@ import {
   Snackbar,
 } from '@mui/material';
 import {
-  PersonOutlined, LockOutlined, ShieldOutlined,
+  LockOutlined, ShieldOutlined,
   ComputerOutlined, PhoneIphoneOutlined, DeleteOutlineOutlined,
   QrCodeOutlined, CheckCircleOutlined, VisibilityOutlined,
   VisibilityOffOutlined, InfoOutlined, FingerprintOutlined,
@@ -237,8 +237,8 @@ function PasswordCard({ notify }: { notify: (msg: string, sev?: 'success' | 'err
       await authApi.changePassword(data.currentPassword, data.newPassword);
       notify('Contraseña actualizada correctamente.');
       reset();
-    } catch (err: any) {
-      notify(err.message ?? 'No se pudo actualizar la contraseña.', 'error');
+    } catch (err: unknown) {
+      notify((err as { message?: string }).message ?? 'No se pudo actualizar la contraseña.', 'error');
     }
   };
 
@@ -334,8 +334,8 @@ function TotpCard({ totpEnabled, notify, onSuccess }: TotpCardProps) {
     try {
       const data = await authApi.totpSetup();
       setSetupData(data);
-    } catch (err: any) {
-      notify(err.message ?? 'No se pudo iniciar la configuración 2FA.', 'error');
+    } catch (err: unknown) {
+      notify((err as { message?: string }).message ?? 'No se pudo iniciar la configuración 2FA.', 'error');
     } finally {
       setLoadingSetup(false);
     }
@@ -464,8 +464,8 @@ function TotpSetupWizard({ setupData, onSuccess, onCancel, notify }: SetupWizard
     try {
       await authApi.totpEnable(data.code);
       onSuccess();
-    } catch (err: any) {
-      notify(err.message ?? 'Código inválido. Intenta de nuevo.', 'error');
+    } catch (err: unknown) {
+      notify((err as { message?: string }).message ?? 'Código inválido. Intenta de nuevo.', 'error');
     }
   };
 
@@ -578,8 +578,8 @@ function TotpActionDialog({
     try {
       await onConfirm(data.code);
       reset();
-    } catch (err: any) {
-      notify(err.message ?? 'Código inválido.', 'error');
+    } catch (err: unknown) {
+      notify((err as { message?: string }).message ?? 'Código inválido.', 'error');
     }
   };
 
@@ -639,8 +639,8 @@ function SessionsCard({ sessions, notify, onRevoke }: SessionsCardProps) {
       await authApi.revokeAllSessions();
       await onRevoke();
       notify('Todas las sesiones han sido cerradas.');
-    } catch (err: any) {
-      notify(err.message ?? 'No se pudieron cerrar las sesiones.', 'error');
+    } catch (err: unknown) {
+      notify((err as { message?: string }).message ?? 'No se pudieron cerrar las sesiones.', 'error');
     } finally {
       setRevoking(false);
     }
