@@ -60,10 +60,16 @@ export function Verify2faForm({ tempToken }: Props) {
         setTimeout(() => inputRef.current?.focus(), 50);
         return;
       }
-      // Cookies ya sincronizadas por la Server Action
+      // Cookies ya sincronizadas por la Server Action.
+      // Si el destino es de otro dominio (forms), navegación dura — el
+      // router de Next no sigue navegaciones cross-origin vía RSC.
       const targetUrl = redirectParam || '/dashboard';
-      router.push(targetUrl);
-      router.refresh();
+      if (/^https?:\/\//i.test(targetUrl)) {
+        window.location.href = targetUrl;
+      } else {
+        router.push(targetUrl);
+        router.refresh();
+      }
     } finally {
       setLoading(false);
     }

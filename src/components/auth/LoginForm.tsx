@@ -50,6 +50,23 @@ function sanitizeRedirect(url: string | null): string | null {
   }
 }
 
+/**
+ * Navega tras el login. Si el destino es de otro dominio (ej. forms),
+ * usa navegación dura del navegador — el router de Next no sigue
+ * redirects/navegaciones cross-origin vía RSC.
+ */
+function navigateAfterLogin(
+  url: string,
+  router: ReturnType<typeof useRouter>,
+): void {
+  if (/^https?:\/\//i.test(url)) {
+    window.location.href = url;
+  } else {
+    router.push(url);
+    router.refresh();
+  }
+}
+
 export function LoginForm() {
   const router                          = useRouter();
   const searchParams                    = useSearchParams();
@@ -82,8 +99,7 @@ export function LoginForm() {
     }
 
     const targetUrl = redirectParam || '/dashboard';
-    router.push(targetUrl);
-    router.refresh();
+    navigateAfterLogin(targetUrl, router);
   };
 
   // ── WebAuthn / Passkey login ───────────────────────────────────
@@ -111,8 +127,7 @@ export function LoginForm() {
 
       // 4. Redirigir al dashboard o al servicio de origen
       const targetUrl = redirectParam || '/dashboard';
-      router.push(targetUrl);
-      router.refresh();
+      navigateAfterLogin(targetUrl, router);
     } catch (err: unknown) {
       const msg = (err as { message?: string }).message ?? '';
       if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('abort')) {
