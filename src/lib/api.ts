@@ -8,6 +8,7 @@ import type { IamUser, Session, TotpSetupResponse, LoginResponse } from '@/types
 import type {
   AdminUser, UserListResponse, Service, ApiKey, ApiKeyCreatedResponse,
   AuditLog, UserServiceAccess, AdminSession, Trabajador,
+  OAuthClient, OAuthClientCreatedResponse, OAuthClientSecretResponse,
 } from '@/types/admin';
 
 export interface TrabajadorListResponse {
@@ -308,6 +309,46 @@ export const adminApi = {
     if (filters?.limit)      qs.set('limit',      String(filters.limit));
     return request<AuditLog[]>(`/admin/audit-logs?${qs.toString()}`);
   },
+};
+
+// ── OAuth / OIDC Clients ───────────────────────────────────────────
+
+export const oauthClientsApi = {
+  list: () =>
+    request<OAuthClient[]>('/admin/oauth-clients'),
+
+  create: (dto: {
+    name: string;
+    redirectUris: string[];
+    postLogoutRedirectUris?: string[];
+    allowedScopes?: string[];
+    isConfidential?: boolean;
+    serviceKey?: string;
+  }) =>
+    request<OAuthClientCreatedResponse>('/admin/oauth-clients', {
+      method: 'POST',
+      body:   JSON.stringify(dto),
+    }),
+
+  update: (id: string, dto: {
+    name?: string;
+    redirectUris?: string[];
+    postLogoutRedirectUris?: string[];
+    allowedScopes?: string[];
+    isActive?: boolean;
+  }) =>
+    request<OAuthClient>(`/admin/oauth-clients/${id}`, {
+      method: 'PATCH',
+      body:   JSON.stringify(dto),
+    }),
+
+  rotateSecret: (id: string) =>
+    request<OAuthClientSecretResponse>(`/admin/oauth-clients/${id}/rotate-secret`, {
+      method: 'POST',
+    }),
+
+  remove: (id: string) =>
+    request<{ message: string }>(`/admin/oauth-clients/${id}`, { method: 'DELETE' }),
 };
 
 // ── WebAuthn / Passkeys ────────────────────────────────────────────

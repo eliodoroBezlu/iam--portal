@@ -5,13 +5,14 @@ import {
 } from '@mui/material';
 import {
   PeopleOutlined, MiscellaneousServicesOutlined,
-  VpnKeyOutlined, HistoryOutlined, BadgeOutlined,
+  VpnKeyOutlined, HistoryOutlined, BadgeOutlined, AppsOutlined,
 } from '@mui/icons-material';
 import { UsersTab }    from './UsersTab';
 import { ServicesTab } from './ServicesTab';
 import { ApiKeysTab }  from './ApiKeysTab';
 import { AuditTab }    from './AuditTab';
 import { WorkersTab }  from './WorkersTab';
+import { OAuthClientsTab } from './OAuthClientsTab';
 
 interface TabPanelProps {
   children: React.ReactNode;
@@ -28,11 +29,12 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 }
 
 const TABS = [
-  { label: 'Usuarios',     icon: <PeopleOutlined />                    },
-  { label: 'Servicios',    icon: <MiscellaneousServicesOutlined />      },
-  { label: 'API Keys',     icon: <VpnKeyOutlined />                    },
-  { label: 'Auditoría',    icon: <HistoryOutlined />                   },
-  { label: 'Trabajadores', icon: <BadgeOutlined />                     },
+  { label: 'Usuarios',      icon: <PeopleOutlined />                    },
+  { label: 'Servicios',     icon: <MiscellaneousServicesOutlined />      },
+  { label: 'API Keys',      icon: <VpnKeyOutlined />                    },
+  { label: 'OAuth Clients', icon: <AppsOutlined />                      },
+  { label: 'Auditoría',     icon: <HistoryOutlined />                   },
+  { label: 'Trabajadores',  icon: <BadgeOutlined />                     },
 ];
 
 export function AdminPanel() {
@@ -87,8 +89,9 @@ export function AdminPanel() {
         <TabPanel value={tab} index={0}><UsersTab /></TabPanel>
         <TabPanel value={tab} index={1}><ServicesTab /></TabPanel>
         <TabPanel value={tab} index={2}><ApiKeysTab /></TabPanel>
-        <TabPanel value={tab} index={3}><AuditTab /></TabPanel>
-        <TabPanel value={tab} index={4}><WorkersTab /></TabPanel>
+        <TabPanel value={tab} index={3}><OAuthClientsTab /></TabPanel>
+        <TabPanel value={tab} index={4}><AuditTab /></TabPanel>
+        <TabPanel value={tab} index={5}><WorkersTab /></TabPanel>
       </Box>
     </Box>
   );

@@ -53,6 +53,31 @@ export interface ApiKeyCreatedResponse {
   message:     string;
 }
 
+export interface OAuthClient {
+  id:                     string;
+  clientId:               string;
+  name:                   string;
+  redirectUris:           string[];
+  postLogoutRedirectUris: string[];
+  allowedScopes:          string[];
+  isConfidential:         boolean;
+  isActive:               boolean;
+  serviceId?:             string | null;
+  createdAt:              string;
+  updatedAt:              string;
+}
+
+export interface OAuthClientCreatedResponse {
+  client:        OAuthClient;
+  clientSecret?: string;   // solo confidential, mostrado una vez
+  message:       string;
+}
+
+export interface OAuthClientSecretResponse {
+  clientSecret: string;
+  message:      string;
+}
+
 export interface AuditLog {
   id:         string;
   event:      string;
