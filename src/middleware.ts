@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { sessionCookieOptions, clearSessionCookies } from '@/lib/cookies';
 
 // ── Rutas públicas ─────────────────────────────────────────────────
 const PUBLIC_PATHS = ['/login', '/verify-2fa', '/api/', '/_next/', '/favicon.ico'];
@@ -86,19 +87,11 @@ export async function middleware(request: NextRequest) {
           request: { headers: requestHeaders },
         });
 
-        const isProd = process.env.NODE_ENV === 'production';
-
         // Setear las nuevas cookies en la respuesta al browser
+        // (domain compartido si COOKIE_DOMAIN está definido → SSO)
         for (const c of newCookies) {
-          response.cookies.set({
-            name:     c.name,
-            value:    c.value,
-            httpOnly: true,
-            secure:   isProd,
-            sameSite: isProd ? 'strict' : 'lax',
-            path:     '/',
-            maxAge:   c.name === 'access_token' ? 15 * 60 : 8 * 60 * 60,
-          });
+          const maxAge = c.name === 'access_token' ? 15 * 60 : 8 * 60 * 60;
+          response.cookies.set(c.name, c.value, sessionCookieOptions(maxAge));
         }
 
         return response;
@@ -118,8 +111,7 @@ function redirectToLogin(request: NextRequest): NextResponse {
     loginUrl.searchParams.set('redirect', request.nextUrl.pathname);
   }
   const res = NextResponse.redirect(loginUrl);
-  res.cookies.delete('access_token');
-  res.cookies.delete('refresh_token');
+  clearSessionCookies(res.cookies);
   return res;
 }
 

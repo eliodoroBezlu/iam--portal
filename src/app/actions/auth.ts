@@ -12,6 +12,7 @@
  */
 
 import { cookies } from 'next/headers';
+import { sessionCookieOptions, clearSessionCookies } from '@/lib/cookies';
 
 const IAM_URL = process.env.IAM_API_URL ?? 'http://localhost:4000/api';
 
@@ -42,13 +43,7 @@ async function syncCookies(response: Response): Promise<void> {
     const maxAgePart = parts.find((p) => p.toLowerCase().startsWith('max-age='));
     const maxAge     = maxAgePart ? parseInt(maxAgePart.split('=')[1], 10) : undefined;
 
-    cookieStore.set(name, value, {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path:     '/',
-      maxAge,
-    });
+    cookieStore.set(name, value, sessionCookieOptions(maxAge));
   }
 }
 
@@ -141,10 +136,9 @@ export async function logoutAction(): Promise<void> {
     // Ignorar errores del backend — siempre limpiar cookies locales
   }
 
-  // Limpiar cookies del browser
+  // Limpiar cookies del browser (mismo domain/path que al setear)
   const cookieStore = await cookies();
-  cookieStore.delete('access_token');
-  cookieStore.delete('refresh_token');
+  clearSessionCookies(cookieStore);
 }
 
 // ── WEBAUTHN AUTHENTICATION ACTIONS ────────────────────────────────
