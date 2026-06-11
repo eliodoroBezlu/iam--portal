@@ -33,7 +33,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 // Dominios permitidos para redirigir después del login (open redirect protection)
 const ALLOWED_ORIGINS = (
   process.env.NEXT_PUBLIC_ALLOWED_REDIRECT_ORIGINS ??
-  'http://localhost:3001,http://localhost:3005'
+  'http://localhost:3001,http://localhost:3005,http://localhost:4000'
 ).split(',').map((o) => o.trim());
 
 function sanitizeRedirect(url: string | null): string | null {
