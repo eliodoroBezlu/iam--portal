@@ -28,12 +28,15 @@ export interface UserListResponse {
 }
 
 export interface Service {
-  id:          string;
-  key:         string;
-  displayName: string;
-  baseUrl:     string;
-  isActive:    boolean;
-  createdAt:   string;
+  id:                string;
+  key:               string;
+  displayName:       string;
+  baseUrl:           string;
+  isActive:          boolean;
+  availableRoles:    string[];
+  permissionCatalog: string[];
+  rolePermissions?:  Record<string, string[]> | null;
+  createdAt:         string;
 }
 
 export interface ApiKey {
@@ -90,10 +93,26 @@ export interface AuditLog {
 export interface UserServiceAccess {
   id:        string;
   roles:     string[];
+  metadata?: { areas?: string[]; disciplina?: string } | null;
   grantedAt: string;
   expiresAt?: string;
   revokedAt?: string;
   service:   { key: string; displayName: string };
+}
+
+export interface Area {
+  codigo:             string;
+  nombre:             string;
+  superintendencia:   string;
+  superintendenciaId?: string | null;
+  activo?:            boolean;
+}
+
+export interface Superintendencia {
+  id:        string;
+  nombre:    string;
+  activo:    boolean;
+  _count?:   { areas: number };
 }
 
 export interface AdminSession {

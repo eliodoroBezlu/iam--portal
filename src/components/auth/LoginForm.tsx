@@ -22,7 +22,7 @@ import {
 // ── Schema de validación ───────────────────────────────────────────
 
 const loginSchema = z.object({
-  username: z.string().min(1, 'El usuario es requerido'),
+  username: z.string().min(1, 'El usuario o correo es requerido'),
   password: z.string().min(1, 'La contraseña es requerida'),
 });
 
@@ -185,7 +185,7 @@ export function LoginForm() {
             {/* Usuario */}
             <TextField
               {...register('username')}
-              label="Usuario"
+              label="Usuario o correo"
               fullWidth
               autoFocus
               autoComplete="username"

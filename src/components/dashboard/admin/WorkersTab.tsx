@@ -3,8 +3,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, FormControlLabel, Grid, InputAdornment, InputLabel,
-  MenuItem, OutlinedInput, Select, Switch,
+  FormControlLabel, Grid, InputAdornment, InputLabel,
+  MenuItem, Switch,
   Snackbar, Stack, Table, TableBody, TableCell, TableFooter,
   TableHead, TablePagination, TableRow, TextField, Tooltip,
   Typography, IconButton,
@@ -14,7 +14,7 @@ import {
   PersonAddOutlined, LinkOffOutlined, EditOutlined, AddOutlined,
 } from '@mui/icons-material';
 import { adminApi } from '@/lib/api';
-import type { Trabajador } from '@/types/admin';
+import type { Trabajador, Area } from '@/types/admin';
 
 // ── Password validation ────────────────────────────────────────────────
 function validatePwd(pwd: string): string | null {
@@ -26,12 +26,15 @@ function validatePwd(pwd: string): string | null {
   return null;
 }
 
-const ROLES_OPTIONS = [
-  { value: 'user',             label: 'Usuario' },
-  { value: 'inspector',        label: 'Inspector' },
-  { value: 'supervisor',       label: 'Supervisor' },
-  { value: 'superintendente',  label: 'Superintendente' },
-  { value: 'admin',            label: 'Administrador' },
+// Catálogo ÚNICO de roles genéricos (global; aplica a todos los servicios).
+const GENERIC_ROLES = [
+  { value: 'super_admin',     label: 'Super Admin' },
+  { value: 'admin',           label: 'Administrador' },
+  { value: 'superintendente', label: 'Superintendente' },
+  { value: 'supervisor',      label: 'Supervisor' },
+  { value: 'planificador',    label: 'Planificador' },
+  { value: 'tecnico',         label: 'Técnico' },
+  { value: 'contratista',     label: 'Contratista' },
 ];
 
 // ── AssignUserDialog ───────────────────────────────────────────────────
@@ -52,11 +55,12 @@ function AssignUserDialog({
   const [email,            setEmail]            = useState('');
   const [password,         setPassword]         = useState('');
   const [confirmPassword,  setConfirmPassword]  = useState('');
-  const [roles,            setRoles]            = useState<string[]>(['user']);
-  const [grantForms,       setGrantForms]       = useState(true);
+  const [role,             setRole]             = useState('tecnico');   // rol global único
+  const [serviceKeys,      setServiceKeys]      = useState<string[]>(['forms']);
+  const [serviceList,      setServiceList]      = useState<{ key: string; displayName: string }[]>([]);
   const [submitting,       setSubmitting]       = useState(false);
 
-  // Pre-fill fullName from nomina when dialog opens
+  // Pre-fill + cargar servicios cuando se abre
   useEffect(() => {
     if (open && trabajador) {
       setFullName(trabajador.nomina);
@@ -64,10 +68,17 @@ function AssignUserDialog({
       setEmail('');
       setPassword('');
       setConfirmPassword('');
-      setRoles(['user']);
-      setGrantForms(true);
+      setRole('tecnico');
+      setServiceKeys(['forms']);
+      adminApi.listServices()
+        .then((svc) => setServiceList(svc.filter((s) => s.isActive).map((s) => ({ key: s.key, displayName: s.displayName }))))
+        .catch(() => setServiceList([]));
     }
   }, [open, trabajador]);
+
+  const toggleService = (key: string) => {
+    setServiceKeys((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
+  };
 
   const pwdError   = password ? validatePwd(password) : null;
   const matchError = confirmPassword && password !== confirmPassword ? 'Las contraseñas no coinciden' : null;
@@ -77,14 +88,20 @@ function AssignUserDialog({
     if (!trabajador || !canSubmit) return;
     setSubmitting(true);
     try {
-      await adminApi.assignUserToTrabajador(trabajador.id, {
+      // Crea el usuario con el rol global y concede forms si está marcado.
+      const res = await adminApi.assignUserToTrabajador(trabajador.id, {
         username,
         password,
         fullName:         fullName || undefined,
         email:            email    || undefined,
-        roles,
-        grantFormsAccess: grantForms,
+        roles:            [role],
+        grantFormsAccess: serviceKeys.includes('forms'),
       });
+      // Concede el resto de servicios seleccionados (el rol es global; solo acceso).
+      for (const key of serviceKeys) {
+        if (key === 'forms') continue;
+        await adminApi.grantAccess(res.user.id, { serviceKey: key, roles: [] });
+      }
       onSuccess(`Usuario @${username} creado y vinculado a ${trabajador.nomina}`);
       onRefresh();
       onClose();
@@ -140,38 +157,30 @@ function AssignUserDialog({
             error={Boolean(matchError)}
             helperText={matchError ?? ''}
           />
-          <FormControl size="small">
-            <InputLabel>Roles</InputLabel>
-            <Select<string[]>
-              multiple
-              value={roles}
-              onChange={(e) => {
-                const val = e.target.value;
-                setRoles(typeof val === 'string' ? val.split(',') : (val as string[]));
-              }}
-              input={<OutlinedInput label="Roles" />}
-              renderValue={(selected) =>
-                selected.map((v) => ROLES_OPTIONS.find((r) => r.value === v)?.label ?? v).join(', ')
-              }
-            >
-              {ROLES_OPTIONS.map((r) => (
-                <MenuItem key={r.value} value={r.value}>
-                  <Checkbox checked={roles.includes(r.value)} size="small" />
-                  {r.label}
-                </MenuItem>
+          <TextField
+            select size="small" label="Rol (global, aplica a todos los servicios)"
+            value={role} onChange={(e) => setRole(e.target.value)}
+            helperText="Los permisos de cada rol se definen por servicio en «Roles y Permisos»."
+          >
+            {GENERIC_ROLES.map((r) => (
+              <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
+            ))}
+          </TextField>
+
+          <Box>
+            <Typography variant="body2" fontWeight={600} mb={0.5}>Acceso a servicios</Typography>
+            <Stack>
+              {serviceList.length === 0 ? (
+                <Typography variant="caption" color="text.secondary">Cargando servicios…</Typography>
+              ) : serviceList.map((s) => (
+                <FormControlLabel
+                  key={s.key}
+                  control={<Checkbox size="small" checked={serviceKeys.includes(s.key)} onChange={() => toggleService(s.key)} />}
+                  label={`${s.displayName} (${s.key})`}
+                />
               ))}
-            </Select>
-          </FormControl>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={grantForms}
-                onChange={(e) => setGrantForms(e.target.checked)}
-                size="small"
-              />
-            }
-            label="Conceder acceso al servicio Forms"
-          />
+            </Stack>
+          </Box>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
@@ -194,10 +203,13 @@ function AssignUserDialog({
 // ── CreateTrabajadorDialog ─────────────────────────────────────────────
 const EMPTY_CREATE = {
   ci: '', nomina: '', puesto: '', superintendencia: '',
-  area: '', fechaIngreso: '', jde: '', noBloque: '',
+  area: '', areaCodigo: '', disciplina: 'GENERAL', esContratista: false,
+  fechaIngreso: '', jde: '', noBloque: '',
   noHabitacion: '', residencia: '', celular: '',
 };
 type CreateForm = typeof EMPTY_CREATE;
+
+const DISCIPLINAS = ['GENERAL', 'MEC', 'ELEC', 'INST'];
 
 interface CreateDialogProps {
   open:      boolean;
@@ -209,15 +221,33 @@ interface CreateDialogProps {
 
 function CreateTrabajadorDialog({ open, onClose, onSuccess, onError, onRefresh }: CreateDialogProps) {
   const [form,       setForm]       = useState<CreateForm>(EMPTY_CREATE);
+  const [areas,      setAreas]      = useState<Area[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => { if (open) setForm(EMPTY_CREATE); }, [open]);
+  useEffect(() => {
+    if (open) {
+      setForm(EMPTY_CREATE);
+      adminApi.listAreas().then(setAreas).catch(() => setAreas([]));
+    }
+  }, [open]);
 
   const set = (field: keyof CreateForm) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const canSubmit = form.ci.trim() && form.nomina.trim() && form.puesto.trim() && form.superintendencia.trim();
+  // Al elegir área, deriva la superintendencia (nombre) para mostrarla
+  const onAreaChange = (codigo: string) => {
+    const a = areas.find((x) => x.codigo === codigo);
+    setForm((prev) => ({
+      ...prev,
+      areaCodigo:       codigo,
+      area:             a?.nombre ?? '',
+      superintendencia: a?.superintendencia ?? prev.superintendencia,
+    }));
+  };
+
+  const canSubmit = form.ci.trim() && form.nomina.trim() && form.puesto.trim()
+    && (form.areaCodigo || form.superintendencia.trim());
 
   const handleCreate = async () => {
     if (!canSubmit) return;
@@ -227,8 +257,11 @@ function CreateTrabajadorDialog({ open, onClose, onSuccess, onError, onRefresh }
         ci:               form.ci.trim(),
         nomina:           form.nomina.trim(),
         puesto:           form.puesto.trim(),
-        superintendencia: form.superintendencia.trim(),
+        superintendencia: form.superintendencia.trim() || undefined,
         area:             form.area         || undefined,
+        areaCodigo:       form.areaCodigo   || undefined,
+        disciplina:       form.disciplina   || undefined,
+        esContratista:    form.esContratista,
         fechaIngreso:     form.fechaIngreso  || undefined,
         jde:              form.jde           || undefined,
         noBloque:         form.noBloque      || undefined,
@@ -276,13 +309,37 @@ function CreateTrabajadorDialog({ open, onClose, onSuccess, onError, onRefresh }
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
-              fullWidth size="small" label="Superintendencia *"
-              value={form.superintendencia} onChange={set('superintendencia')}
-              error={!form.superintendencia.trim()} helperText={!form.superintendencia.trim() ? 'Requerido' : ''}
-            />
+              select fullWidth size="small" label="Área *"
+              value={form.areaCodigo}
+              onChange={(e) => onAreaChange(e.target.value)}
+              error={!form.areaCodigo && !form.superintendencia.trim()}
+              helperText={form.areaCodigo ? `Superintendencia: ${form.superintendencia}` : 'Selecciona el área'}
+            >
+              <MenuItem value=""><em>-- Seleccionar --</em></MenuItem>
+              {areas.map((a) => (
+                <MenuItem key={a.codigo} value={a.codigo}>{a.codigo} — {a.nombre}</MenuItem>
+              ))}
+            </TextField>
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField fullWidth size="small" label="Área" value={form.area} onChange={set('area')} />
+            <TextField
+              select fullWidth size="small" label="Disciplina"
+              value={form.disciplina}
+              onChange={(e) => setForm((p) => ({ ...p, disciplina: e.target.value }))}
+            >
+              {DISCIPLINAS.map((d) => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={form.esContratista}
+                  onChange={(e) => setForm((p) => ({ ...p, esContratista: e.target.checked }))}
+                />
+              }
+              label="Es contratista"
+            />
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField

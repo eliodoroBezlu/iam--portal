@@ -7,7 +7,7 @@
 import type { IamUser, Session, TotpSetupResponse, LoginResponse } from '@/types';
 import type {
   AdminUser, UserListResponse, Service, ApiKey, ApiKeyCreatedResponse,
-  AuditLog, UserServiceAccess, AdminSession, Trabajador,
+  AuditLog, UserServiceAccess, AdminSession, Trabajador, Area, Superintendencia,
   OAuthClient, OAuthClientCreatedResponse, OAuthClientSecretResponse,
 } from '@/types/admin';
 
@@ -133,6 +133,12 @@ export const adminApi = {
   getUser: (userId: string) =>
     request<AdminUser>(`/admin/users/${userId}`),
 
+  updateUser: (userId: string, dto: { roles?: string[]; email?: string; fullName?: string }) =>
+    request<AdminUser>(`/admin/users/${userId}`, {
+      method: 'PATCH',
+      body:   JSON.stringify(dto),
+    }),
+
   deactivateUser: (userId: string) =>
     request<{ message: string }>(`/admin/users/${userId}/deactivate`, { method: 'POST' }),
 
@@ -154,7 +160,7 @@ export const adminApi = {
   getUserAccesses: (userId: string) =>
     request<UserServiceAccess[]>(`/admin/users/${userId}/services`),
 
-  grantAccess: (userId: string, dto: { serviceKey: string; roles: string[]; expiresAt?: string }) =>
+  grantAccess: (userId: string, dto: { serviceKey: string; roles: string[]; expiresAt?: string; metadata?: Record<string, unknown> }) =>
     request<UserServiceAccess>(`/admin/users/${userId}/services`, {
       method: 'POST',
       body:   JSON.stringify(dto),
@@ -170,6 +176,24 @@ export const adminApi = {
   listServices: () =>
     request<Service[]>('/admin/services'),
 
+  listAreas: () =>
+    request<Area[]>('/admin/areas'),
+
+  createArea: (dto: { codigo: string; nombre: string; superintendenciaId: string }) =>
+    request<Area>('/admin/areas', { method: 'POST', body: JSON.stringify(dto) }),
+
+  updateArea: (codigo: string, dto: { nombre?: string; superintendenciaId?: string; activo?: boolean }) =>
+    request<Area>(`/admin/areas/${codigo}`, { method: 'PATCH', body: JSON.stringify(dto) }),
+
+  listSuperintendencias: () =>
+    request<Superintendencia[]>('/admin/superintendencias'),
+
+  createSuperintendencia: (nombre: string) =>
+    request<Superintendencia>('/admin/superintendencias', { method: 'POST', body: JSON.stringify({ nombre }) }),
+
+  updateSuperintendencia: (id: string, dto: { nombre?: string; activo?: boolean }) =>
+    request<Superintendencia>(`/admin/superintendencias/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
+
   createService: (dto: { key: string; displayName: string; baseUrl: string; isActive?: boolean }) =>
     request<Service>('/admin/services', {
       method: 'POST',
@@ -179,7 +203,11 @@ export const adminApi = {
   toggleService: (serviceId: string, active: boolean) =>
     request<Service>(`/admin/services/${serviceId}/toggle?active=${active}`, { method: 'PATCH' }),
 
-  updateService: (serviceId: string, dto: { displayName?: string; baseUrl?: string; isActive?: boolean }) =>
+  updateService: (serviceId: string, dto: {
+    displayName?: string; baseUrl?: string; isActive?: boolean;
+    availableRoles?: string[]; permissionCatalog?: string[];
+    rolePermissions?: Record<string, string[]>;
+  }) =>
     request<Service>(`/admin/services/${serviceId}`, {
       method: 'PATCH',
       body:   JSON.stringify(dto),
@@ -230,8 +258,11 @@ export const adminApi = {
     ci:               string;
     nomina:           string;
     puesto:           string;
-    superintendencia: string;
+    superintendencia?: string;
     area?:            string;
+    areaCodigo?:      string;
+    disciplina?:      string;
+    esContratista?:   boolean;
     fechaIngreso?:    string;
     jde?:             string;
     noBloque?:        string;
@@ -251,6 +282,9 @@ export const adminApi = {
       puesto?:           string;
       superintendencia?: string;
       area?:             string;
+      areaCodigo?:       string;
+      disciplina?:       string;
+      esContratista?:    boolean;
       fechaIngreso?:     string;
       jde?:              string;
       noBloque?:         string;

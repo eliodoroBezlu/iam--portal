@@ -6,6 +6,7 @@ import {
 import {
   PeopleOutlined, MiscellaneousServicesOutlined,
   VpnKeyOutlined, HistoryOutlined, BadgeOutlined, AppsOutlined,
+  ShieldOutlined, MapOutlined,
 } from '@mui/icons-material';
 import { UsersTab }    from './UsersTab';
 import { ServicesTab } from './ServicesTab';
@@ -13,6 +14,8 @@ import { ApiKeysTab }  from './ApiKeysTab';
 import { AuditTab }    from './AuditTab';
 import { WorkersTab }  from './WorkersTab';
 import { OAuthClientsTab } from './OAuthClientsTab';
+import { PermissionsTab } from './PermissionsTab';
+import { CatalogTab } from './CatalogTab';
 
 interface TabPanelProps {
   children: React.ReactNode;
@@ -35,6 +38,8 @@ const TABS = [
   { label: 'OAuth Clients', icon: <AppsOutlined />                      },
   { label: 'Auditoría',     icon: <HistoryOutlined />                   },
   { label: 'Trabajadores',  icon: <BadgeOutlined />                     },
+  { label: 'Roles y Permisos', icon: <ShieldOutlined />                 },
+  { label: 'Áreas',         icon: <MapOutlined />                       },
 ];
 
 export function AdminPanel() {
@@ -92,6 +97,8 @@ export function AdminPanel() {
         <TabPanel value={tab} index={3}><OAuthClientsTab /></TabPanel>
         <TabPanel value={tab} index={4}><AuditTab /></TabPanel>
         <TabPanel value={tab} index={5}><WorkersTab /></TabPanel>
+        <TabPanel value={tab} index={6}><PermissionsTab /></TabPanel>
+        <TabPanel value={tab} index={7}><CatalogTab /></TabPanel>
       </Box>
     </Box>
   );

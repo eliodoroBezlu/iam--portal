@@ -15,7 +15,19 @@ import {
   AddCircleOutlineOutlined, RemoveCircleOutlineOutlined,
 } from '@mui/icons-material';
 import { adminApi } from '@/lib/api';
-import type { AdminUser, UserListResponse, Service, UserServiceAccess } from '@/types/admin';
+import type { AdminUser, UserListResponse, Service, UserServiceAccess, Area } from '@/types/admin';
+
+// Catálogo ÚNICO de roles genéricos (global; aplica a todos los servicios).
+// Lo que cambia por servicio son los PERMISOS (pestaña Roles y Permisos).
+const GENERIC_ROLES: { slug: string; label: string }[] = [
+  { slug: 'super_admin',     label: 'Super Admin' },
+  { slug: 'admin',           label: 'Administrador' },
+  { slug: 'superintendente', label: 'Superintendente' },
+  { slug: 'supervisor',      label: 'Supervisor' },
+  { slug: 'planificador',    label: 'Planificador' },
+  { slug: 'tecnico',         label: 'Técnico' },
+  { slug: 'contratista',     label: 'Contratista' },
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -56,6 +68,7 @@ export function UsersTab() {
   // Dialogs
   const [resetTarget,  setResetTarget]  = useState<AdminUser | null>(null);
   const [servicesUser, setServicesUser] = useState<AdminUser | null>(null);
+  const [roleTarget,   setRoleTarget]   = useState<AdminUser | null>(null);
 
   // Per-row action menu
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -304,6 +317,13 @@ export function UsersTab() {
             <Typography variant="body2">Resetear contraseña</Typography>
           </MenuItem>,
           <MenuItem
+            key="role"
+            onClick={() => { setRoleTarget(menuUser); closeMenu(); }}
+          >
+            <ManageAccountsOutlined fontSize="small" sx={{ mr: 1.5, color: 'primary.main' }} />
+            <Typography variant="body2">Cambiar rol</Typography>
+          </MenuItem>,
+          <MenuItem
             key="services"
             onClick={() => { setServicesUser(menuUser); closeMenu(); }}
           >
@@ -318,6 +338,16 @@ export function UsersTab() {
         <ResetPasswordDialog
           user={resetTarget}
           onClose={() => setResetTarget(null)}
+          notify={notify}
+        />
+      )}
+
+      {/* Change global role dialog */}
+      {roleTarget && (
+        <ChangeRoleDialog
+          user={roleTarget}
+          onClose={() => setRoleTarget(null)}
+          onSaved={() => { setRoleTarget(null); load(page, search); }}
           notify={notify}
         />
       )}
@@ -434,6 +464,62 @@ function ResetPasswordDialog({ user, onClose, notify }: ResetDialogProps) {
   );
 }
 
+// ── ChangeRoleDialog (rol GLOBAL del usuario) ─────────────────────────
+
+interface ChangeRoleDialogProps {
+  user:    AdminUser;
+  onClose: () => void;
+  onSaved: () => void;
+  notify:  (msg: string, sev?: 'success' | 'error') => void;
+}
+
+function ChangeRoleDialog({ user, onClose, onSaved, notify }: ChangeRoleDialogProps) {
+  const [role, setRole] = useState(user.roles?.[0] ?? 'tecnico');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await adminApi.updateUser(user.id, { roles: [role] });
+      notify(`Rol de @${user.username} actualizado a '${role}'`);
+      onSaved();
+    } catch (err: unknown) {
+      notify((err as { message?: string }).message ?? 'Error al cambiar el rol', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle fontWeight={700}>Rol de @{user.username}</DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body2" color="text.secondary" mb={2}>
+          El rol es global: aplica a todos los servicios a los que el usuario tiene acceso.
+          Los permisos de cada rol se definen por servicio en la pestaña <b>Roles y Permisos</b>.
+        </Typography>
+        <TextField
+          select fullWidth label="Rol" value={role}
+          onChange={(e) => setRole(e.target.value)} SelectProps={{ native: true }}
+        >
+          {GENERIC_ROLES.map((r) => (
+            <option key={r.slug} value={r.slug}>{r.label}</option>
+          ))}
+        </TextField>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <Button type="button" onClick={onClose}>Cancelar</Button>
+        <Button
+          type="button" variant="contained" onClick={handleSave} disabled={saving}
+          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+        >
+          {saving ? 'Guardando…' : 'Guardar'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ── ManageServicesDialog ──────────────────────────────────────────────
 
 interface ManageServicesDialogProps {
@@ -445,21 +531,30 @@ interface ManageServicesDialogProps {
 function ManageServicesDialog({ user, onClose, notify }: ManageServicesDialogProps) {
   const [accesses,  setAccesses]  = useState<UserServiceAccess[]>([]);
   const [services,  setServices]  = useState<Service[]>([]);
+  const [areas,     setAreas]     = useState<Area[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [granting,  setGranting]  = useState(false);
   const [revoking,  setRevoking]  = useState<string | null>(null);
 
-  const [grantForm, setGrantForm] = useState({ serviceKey: '', roles: '' });
+  const [grantForm, setGrantForm] = useState({ serviceKey: '' });
+  const [syncAreas, setSyncAreas] = useState<string[]>([]);
+  const [expiresAt, setExpiresAt] = useState('');
+
+  const isSync = grantForm.serviceKey === 'sync-msc';
+  // El rol es GLOBAL (User.roles); un contratista suele llevar acceso con expiración.
+  const isContratista = user.roles?.includes('contratista');
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [acc, svc] = await Promise.all([
+      const [acc, svc, ar] = await Promise.all([
         adminApi.getUserAccesses(user.id),
         adminApi.listServices(),
+        adminApi.listAreas().catch(() => [] as Area[]),
       ]);
       setAccesses(acc);
       setServices(svc.filter((s) => s.isActive));
+      setAreas(ar);
     } catch {
       notify('Error cargando datos', 'error');
     } finally {
@@ -471,12 +566,19 @@ function ManageServicesDialog({ user, onClose, notify }: ManageServicesDialogPro
 
   const handleGrant = async () => {
     if (!grantForm.serviceKey) { notify('Selecciona un servicio', 'error'); return; }
-    const roles = grantForm.roles.split(',').map((r) => r.trim()).filter(Boolean);
     setGranting(true);
     try {
-      await adminApi.grantAccess(user.id, { serviceKey: grantForm.serviceKey, roles });
+      // El rol es global (User.roles); aquí solo se concede ACCESO + metadata.
+      await adminApi.grantAccess(user.id, {
+        serviceKey: grantForm.serviceKey,
+        roles:      [],
+        ...(isSync && { metadata: { areas: syncAreas } }),
+        ...(expiresAt && { expiresAt: new Date(expiresAt).toISOString() }),
+      });
       notify(`Acceso a '${grantForm.serviceKey}' concedido`);
-      setGrantForm({ serviceKey: '', roles: '' });
+      setGrantForm({ serviceKey: '' });
+      setSyncAreas([]);
+      setExpiresAt('');
       loadData();
     } catch (err: unknown) {
       notify((err as { message?: string }).message ?? 'Error concediendo acceso', 'error');
@@ -502,7 +604,14 @@ function ManageServicesDialog({ user, onClose, notify }: ManageServicesDialogPro
 
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-      <DialogTitle fontWeight={700}>Servicios — {user.username}</DialogTitle>
+      <DialogTitle fontWeight={700}>
+        Servicios — {user.username}
+        {user.roles?.length > 0 && (
+          <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+            · Rol: {user.roles.join(', ')}
+          </Typography>
+        )}
+      </DialogTitle>
       <DialogContent dividers>
         {loading ? (
           <Box display="flex" justifyContent="center" py={4}><CircularProgress /></Box>
@@ -531,9 +640,12 @@ function ManageServicesDialog({ user, onClose, notify }: ManageServicesDialogPro
                           </Stack>
                         }
                         secondary={
-                          acc.roles.length > 0
-                            ? `Roles: ${acc.roles.join(', ')}`
-                            : 'Sin roles específicos'
+                          <>
+                            {acc.metadata?.areas && acc.metadata.areas.length > 0
+                              ? `Áreas: ${acc.metadata.areas.join(', ')}`
+                              : 'Acceso concedido'}
+                            {acc.expiresAt && <> · Expira: {new Date(acc.expiresAt).toLocaleDateString()}</>}
+                          </>
                         }
                       />
                       <ListItemSecondaryAction>
@@ -581,14 +693,42 @@ function ManageServicesDialog({ user, onClose, notify }: ManageServicesDialogPro
                       <option key={s.key} value={s.key}>{s.displayName} ({s.key})</option>
                     ))}
                 </TextField>
-                <TextField
-                  label="Roles (separados por coma)"
-                  value={grantForm.roles}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGrantForm((f) => ({ ...f, roles: e.target.value }))}
-                  size="small"
-                  fullWidth
-                  placeholder="forms:inspector, forms:supervisor"
-                />
+                {isSync && (
+                  <TextField
+                    select
+                    label="Áreas asignadas (sync)"
+                    value={syncAreas}
+                    onChange={(e) => {
+                      const val = e.target.value as unknown as string[];
+                      setSyncAreas(typeof val === 'string' ? [val] : val);
+                    }}
+                    size="small"
+                    fullWidth
+                    SelectProps={{
+                      multiple: true,
+                      renderValue: (sel) => (sel as string[]).join(', ') || 'Ninguna',
+                    }}
+                    helperText={areas.length === 0 ? 'Catálogo de áreas vacío' : `${syncAreas.length} seleccionada(s)`}
+                  >
+                    {areas.map((a) => (
+                      <MenuItem key={a.codigo} value={a.codigo}>
+                        {a.codigo} — {a.nombre}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
+                {grantForm.serviceKey && (
+                  <TextField
+                    label={isContratista ? 'Expira el (contratista)' : 'Expira el (opcional)'}
+                    type="date"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                    size="small"
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Vacío = sin expiración. El acceso se corta solo al llegar la fecha."
+                  />
+                )}
                 <Box>
                   <Button
                     type="button"
