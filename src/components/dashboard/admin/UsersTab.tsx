@@ -17,17 +17,41 @@ import {
 import { adminApi } from '@/lib/api';
 import type { AdminUser, UserListResponse, Service, UserServiceAccess, Area } from '@/types/admin';
 
-// Catálogo ÚNICO de roles genéricos (global; aplica a todos los servicios).
-// Lo que cambia por servicio son los PERMISOS (pestaña Roles y Permisos).
-const GENERIC_ROLES: { slug: string; label: string }[] = [
-  { slug: 'super_admin',     label: 'Super Admin' },
-  { slug: 'admin',           label: 'Administrador' },
-  { slug: 'superintendente', label: 'Superintendente' },
-  { slug: 'supervisor',      label: 'Supervisor' },
-  { slug: 'planificador',    label: 'Planificador' },
-  { slug: 'tecnico',         label: 'Técnico' },
-  { slug: 'contratista',     label: 'Contratista' },
-];
+// Etiquetas legibles de los roles conocidos. Es solo cosmético: el catálogo
+// real se lee de los servicios (`Service.availableRoles`), no de aquí. Un rol
+// creado en IAM aparece sin tocar este archivo; si no está en esta tabla se
+// muestra su slug formateado.
+const ROLE_LABELS: Record<string, string> = {
+  super_admin:        'Super Admin',
+  admin:              'Administrador',
+  superintendente:    'Superintendente',
+  supervisor:         'Supervisor',
+  planificador:       'Planificador',
+  tecnico:            'Técnico',
+  contratista:        'Contratista',
+  inspector_asignado: 'Inspector Asignado',
+};
+
+/** Etiqueta presentable para un slug de rol, conocido o no. */
+function labelDeRol(slug: string): string {
+  return (
+    ROLE_LABELS[slug] ??
+    slug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
+/**
+ * Catálogo de roles asignables = unión de `availableRoles` de los servicios.
+ *
+ * El rol es global (vive en `User.roles`), pero cada servicio declara los que
+ * ofrece. Antes esta lista estaba hardcodeada, así que un rol dado de alta en
+ * IAM no aparecía en el selector por más que existiera en la base.
+ */
+function rolesAsignables(services: Service[]): { slug: string; label: string }[] {
+  const slugs = new Set<string>();
+  for (const s of services) for (const r of s.availableRoles ?? []) slugs.add(r);
+  return [...slugs].sort().map((slug) => ({ slug, label: labelDeRol(slug) }));
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -476,6 +500,33 @@ interface ChangeRoleDialogProps {
 function ChangeRoleDialog({ user, onClose, onSaved, notify }: ChangeRoleDialogProps) {
   const [role, setRole] = useState(user.roles?.[0] ?? 'tecnico');
   const [saving, setSaving] = useState(false);
+  const [roles, setRoles] = useState<{ slug: string; label: string }[]>([]);
+  const [cargandoRoles, setCargandoRoles] = useState(true);
+
+  // El catálogo sale de los servicios, no de una lista fija: así un rol nuevo
+  // creado en IAM aparece aquí sin desplegar el portal.
+  useEffect(() => {
+    let vivo = true;
+    adminApi
+      .listServices()
+      .then((services) => {
+        if (!vivo) return;
+        const disponibles = rolesAsignables(services);
+        // Incluir el rol actual aunque su servicio esté inactivo o lo hayan
+        // quitado del catálogo, para no cambiárselo sin querer al guardar.
+        if (role && !disponibles.some((r) => r.slug === role)) {
+          disponibles.unshift({ slug: role, label: labelDeRol(role) });
+        }
+        setRoles(disponibles);
+      })
+      .catch(() => {
+        if (vivo) setRoles([{ slug: role, label: labelDeRol(role) }]);
+      })
+      .finally(() => vivo && setCargandoRoles(false));
+    return () => {
+      vivo = false;
+    };
+  }, [role]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -499,10 +550,11 @@ function ChangeRoleDialog({ user, onClose, onSaved, notify }: ChangeRoleDialogPr
           Los permisos de cada rol se definen por servicio en la pestaña <b>Roles y Permisos</b>.
         </Typography>
         <TextField
-          select fullWidth label="Rol" value={role}
+          select fullWidth label="Rol" value={role} disabled={cargandoRoles}
+          helperText={cargandoRoles ? 'Cargando roles disponibles…' : undefined}
           onChange={(e) => setRole(e.target.value)} SelectProps={{ native: true }}
         >
-          {GENERIC_ROLES.map((r) => (
+          {roles.map((r) => (
             <option key={r.slug} value={r.slug}>{r.label}</option>
           ))}
         </TextField>

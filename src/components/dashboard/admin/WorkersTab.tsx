@@ -26,16 +26,27 @@ function validatePwd(pwd: string): string | null {
   return null;
 }
 
-// Catálogo ÚNICO de roles genéricos (global; aplica a todos los servicios).
-const GENERIC_ROLES = [
-  { value: 'super_admin',     label: 'Super Admin' },
-  { value: 'admin',           label: 'Administrador' },
-  { value: 'superintendente', label: 'Superintendente' },
-  { value: 'supervisor',      label: 'Supervisor' },
-  { value: 'planificador',    label: 'Planificador' },
-  { value: 'tecnico',         label: 'Técnico' },
-  { value: 'contratista',     label: 'Contratista' },
-];
+// Etiquetas legibles de los roles conocidos. Es solo cosmético: el catálogo
+// real sale de los servicios (`Service.availableRoles`), así que un rol nuevo
+// creado en IAM aparece sin tocar este archivo.
+const ROLE_LABELS: Record<string, string> = {
+  super_admin:        'Super Admin',
+  admin:              'Administrador',
+  superintendente:    'Superintendente',
+  supervisor:         'Supervisor',
+  planificador:       'Planificador',
+  tecnico:            'Técnico',
+  contratista:        'Contratista',
+  inspector_asignado: 'Inspector Asignado',
+};
+
+/** Etiqueta presentable para un slug de rol, conocido o no. */
+function labelDeRol(slug: string): string {
+  return (
+    ROLE_LABELS[slug] ??
+    slug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
 
 // ── AssignUserDialog ───────────────────────────────────────────────────
 interface AssignUserDialogProps {
@@ -58,6 +69,8 @@ function AssignUserDialog({
   const [role,             setRole]             = useState('tecnico');   // rol global único
   const [serviceKeys,      setServiceKeys]      = useState<string[]>(['forms']);
   const [serviceList,      setServiceList]      = useState<{ key: string; displayName: string }[]>([]);
+  // Catálogo de roles derivado de los servicios, no hardcodeado.
+  const [rolesDisponibles, setRolesDisponibles] = useState<{ value: string; label: string }[]>([]);
   const [submitting,       setSubmitting]       = useState(false);
 
   // Pre-fill + cargar servicios cuando se abre
@@ -71,8 +84,22 @@ function AssignUserDialog({
       setRole('tecnico');
       setServiceKeys(['forms']);
       adminApi.listServices()
-        .then((svc) => setServiceList(svc.filter((s) => s.isActive).map((s) => ({ key: s.key, displayName: s.displayName }))))
-        .catch(() => setServiceList([]));
+        .then((svc) => {
+          const activos = svc.filter((s) => s.isActive);
+          setServiceList(activos.map((s) => ({ key: s.key, displayName: s.displayName })));
+
+          // Los roles asignables son la unión de los `availableRoles` de los
+          // servicios: el rol es global, pero cada servicio declara los suyos.
+          const slugs = new Set<string>();
+          for (const s of activos) for (const r of s.availableRoles ?? []) slugs.add(r);
+          setRolesDisponibles(
+            [...slugs].sort().map((value) => ({ value, label: labelDeRol(value) })),
+          );
+        })
+        .catch(() => {
+          setServiceList([]);
+          setRolesDisponibles([]);
+        });
     }
   }, [open, trabajador]);
 
@@ -162,7 +189,9 @@ function AssignUserDialog({
             value={role} onChange={(e) => setRole(e.target.value)}
             helperText="Los permisos de cada rol se definen por servicio en «Roles y Permisos»."
           >
-            {GENERIC_ROLES.map((r) => (
+            {rolesDisponibles.length === 0 ? (
+              <MenuItem value={role} disabled>Cargando roles…</MenuItem>
+            ) : rolesDisponibles.map((r) => (
               <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>
             ))}
           </TextField>

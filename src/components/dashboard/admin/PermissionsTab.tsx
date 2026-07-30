@@ -2,12 +2,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, CircularProgress, Divider,
-  FormControlLabel, MenuItem, Paper, Snackbar, Stack,
-  Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
+  IconButton, MenuItem, Paper, Snackbar, Stack,
+  Table, TableBody, TableCell, TableHead, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material';
-import { SaveOutlined, AddOutlined } from '@mui/icons-material';
+import { SaveOutlined, AddOutlined, DeleteOutlineOutlined } from '@mui/icons-material';
 import { adminApi } from '@/lib/api';
 import type { Service } from '@/types/admin';
+
+/**
+ * Mismo patrón que valida el backend (`PATRON_NOMBRE_ROL` en iam-core).
+ * El nombre viaja en el JWT y en los enums del forms service: un espacio o una
+ * mayúscula rompen la comparación en el otro extremo sin dar error visible.
+ * Se admiten `-` y `:` porque iro-service ya usa roles con prefijo.
+ */
+const PATRON_ROL = /^[a-z][a-z0-9_:-]{2,39}$/;
 
 /**
  * Editor de RBAC por servicio: matriz rol × permiso.
@@ -21,6 +29,7 @@ export function PermissionsTab() {
   const [catalog, setCatalog] = useState<string[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [newPerm, setNewPerm] = useState('');
+  const [newRole, setNewRole] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [snack, setSnack] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
@@ -72,6 +81,36 @@ export function PermissionsTab() {
     setNewPerm('');
   };
 
+  const addRole = () => {
+    const r = newRole.trim().toLowerCase();
+    if (!r) return;
+    if (!PATRON_ROL.test(r)) {
+      setSnack({
+        msg: 'Nombre inválido. Usa minúsculas, dígitos, _ - o :, empezando por letra (3–40). Ej: inspector_asignado',
+        sev: 'error',
+      });
+      return;
+    }
+    if (roles.includes(r)) {
+      setSnack({ msg: `El rol '${r}' ya existe en este servicio`, sev: 'error' });
+      return;
+    }
+    setRoles((prev) => [...prev, r]);
+    setMatrix((prev) => ({ ...prev, [r]: new Set<string>() }));
+    setNewRole('');
+  };
+
+  // El rol solo desaparece de verdad al guardar; el backend rechaza la baja si
+  // algún usuario todavía lo tiene asignado.
+  const removeRole = (role: string) => {
+    setRoles((prev) => prev.filter((r) => r !== role));
+    setMatrix((prev) => {
+      const next = { ...prev };
+      delete next[role];
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     const svc = services.find((s) => s.key === serviceKey);
     if (!svc) return;
@@ -79,8 +118,12 @@ export function PermissionsTab() {
     try {
       const rolePermissions: Record<string, string[]> = {};
       for (const role of roles) rolePermissions[role] = Array.from(matrix[role] ?? []);
-      await adminApi.updateService(svc.id, { permissionCatalog: catalog, rolePermissions });
-      setSnack({ msg: `Permisos de '${serviceKey}' guardados`, sev: 'success' });
+      await adminApi.updateService(svc.id, {
+        availableRoles: roles,
+        permissionCatalog: catalog,
+        rolePermissions,
+      });
+      setSnack({ msg: `Roles y permisos de '${serviceKey}' guardados`, sev: 'success' });
       await load();
     } catch (err: unknown) {
       setSnack({ msg: (err as { message?: string }).message ?? 'Error al guardar', sev: 'error' });
@@ -130,7 +173,16 @@ export function PermissionsTab() {
                   Permiso \ Rol
                 </TableCell>
                 {roles.map((r) => (
-                  <TableCell key={r} align="center" sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{r}</TableCell>
+                  <TableCell key={r} align="center" sx={{ fontWeight: 700, fontFamily: 'monospace' }}>
+                    <Stack direction="row" alignItems="center" justifyContent="center" spacing={0.5}>
+                      <span>{r}</span>
+                      <Tooltip title={`Eliminar el rol '${r}' de este servicio`}>
+                        <IconButton size="small" onClick={() => removeRole(r)}>
+                          <DeleteOutlineOutlined fontSize="inherit" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -157,16 +209,36 @@ export function PermissionsTab() {
       )}
 
       <Divider sx={{ my: 2 }} />
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+        <TextField
+          size="small" label="Nuevo rol (ej. inspector_asignado)" value={newRole}
+          onChange={(e) => setNewRole(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') addRole(); }}
+          sx={{ minWidth: 260 }}
+        />
+        <Button startIcon={<AddOutlined />} onClick={addRole} disabled={!newRole.trim()}>
+          Añadir rol
+        </Button>
+
+        <Box flex={1} />
+
         <TextField
           size="small" label="Nuevo permiso (ej. create:form)" value={newPerm}
           onChange={(e) => setNewPerm(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') addPermission(); }}
+          sx={{ minWidth: 260 }}
         />
         <Button startIcon={<AddOutlined />} onClick={addPermission} disabled={!newPerm.trim()}>
           Añadir permiso
         </Button>
       </Stack>
+
+      <Alert severity="warning" sx={{ mt: 2 }}>
+        Los roles y permisos nuevos aparecen aquí al instante, pero solo existen
+        cuando pulsas <strong>Guardar cambios</strong>. Un rol recién guardado ya
+        se puede asignar a usuarios desde <em>Usuarios</em> y <em>Trabajadores</em>,
+        sin desplegar nada.
+      </Alert>
 
       <Snackbar
         open={!!snack} autoHideDuration={4000} onClose={() => setSnack(null)}
