@@ -14,6 +14,7 @@ import {
   VisibilityOffOutlined, SecurityOutlined, FingerprintOutlined,
 } from '@mui/icons-material';
 import { loginAction, getWebAuthnAuthOptionsAction, verifyWebAuthnAuthAction } from '@/app/actions/auth';
+import { CambioClaveObligatorio, type ResultadoCambioClave } from './CambioClaveObligatorio';
 import {
   startAuthentication, browserSupportsWebAuthn,
   type PublicKeyCredentialRequestOptionsJSON,
@@ -74,6 +75,8 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [apiError,     setApiError]     = useState<string | null>(null);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
+  // Contraseña provisional: el token del paso vive solo en memoria, no en la URL.
+  const [cambioClave, setCambioClave] = useState<{ tempToken: string; mensaje: string } | null>(null);
 
   const {
     register,
@@ -93,13 +96,26 @@ export function LoginForm() {
       return;
     }
 
-    if (result.requires2FA) {
-      router.push(`/verify-2fa?tempToken=${encodeURIComponent(result.tempToken)}${redirectParam ? `&redirect=${encodeURIComponent(redirectParam)}` : ''}`);
+    if (result.requiresPasswordChange) {
+      setCambioClave({ tempToken: result.tempToken, mensaje: result.message });
       return;
     }
 
-    const targetUrl = redirectParam || '/dashboard';
-    navigateAfterLogin(targetUrl, router);
+    if (result.requires2FA) {
+      irA2fa(result.tempToken);
+      return;
+    }
+
+    navigateAfterLogin(redirectParam || '/dashboard', router);
+  };
+
+  const irA2fa = (tempToken: string) => {
+    router.push(`/verify-2fa?tempToken=${encodeURIComponent(tempToken)}${redirectParam ? `&redirect=${encodeURIComponent(redirectParam)}` : ''}`);
+  };
+
+  const onClaveCambiada = (r: ResultadoCambioClave) => {
+    if (r.siguiente === '2fa') irA2fa(r.tempToken);
+    else navigateAfterLogin(redirectParam || '/dashboard', router);
   };
 
   // ── WebAuthn / Passkey login ───────────────────────────────────
@@ -164,12 +180,21 @@ export function LoginForm() {
             <SecurityOutlined sx={{ color: 'white', fontSize: 28 }} />
           </Box>
           <Typography variant="h5" fontWeight={700} color="primary.dark">
-            Iniciar sesión
+            {cambioClave ? 'Elige tu contraseña' : 'Iniciar sesión'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Sistema de Gestión San Cristóbal
           </Typography>
         </Stack>
+
+        {cambioClave ? (
+          <CambioClaveObligatorio
+            tempToken={cambioClave.tempToken}
+            mensaje={cambioClave.mensaje}
+            onListo={onClaveCambiada}
+            onVolver={() => setCambioClave(null)}
+          />
+        ) : (<>
 
         {/* Error de API */}
         {apiError && (
@@ -272,6 +297,8 @@ export function LoginForm() {
             </Button>
           </>
         )}
+
+        </>)}
 
         <Divider sx={{ my: 3 }} />
 
