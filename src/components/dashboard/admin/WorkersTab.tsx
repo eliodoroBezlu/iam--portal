@@ -490,7 +490,7 @@ function EditTrabajadorDialog({ open, trabajador, onClose, onSuccess, onError, o
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
-        Editar trabajador — <Typography component="span" variant="inherit" color="primary">{trabajador?.ci}</Typography>
+        Editar trabajador — <Typography component="span" variant="inherit" color="primary">{trabajador?.ci ?? 'sin CI'}</Typography>
       </DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -743,9 +743,15 @@ export function WorkersTab() {
               workers.map((w) => (
                 <TableRow key={w.id} hover>
                   <TableCell>
-                    <Typography variant="caption" fontFamily="monospace" fontWeight={700}>
-                      {w.ci}
-                    </Typography>
+                    {w.ci ? (
+                      <Typography variant="caption" fontFamily="monospace" fontWeight={700}>
+                        {w.ci}
+                      </Typography>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary" fontStyle="italic">
+                        Sin CI
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" fontWeight={600}>{w.nomina}</Typography>

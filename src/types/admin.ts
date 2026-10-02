@@ -128,7 +128,8 @@ export interface AdminSession {
 
 export interface Trabajador {
   id:                string;
-  ci:                string;
+  /** Opcional: contratistas dados de alta desde los servicios (ej. Sync) pueden no tenerlo. */
+  ci:                string | null;
   nomina:            string;
   puesto:            string;
   superintendencia:  string;
