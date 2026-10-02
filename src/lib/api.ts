@@ -122,11 +122,12 @@ export const adminApi = {
 
   // ── Usuarios ──────────────────────────────────────────────────────
 
-  listUsers: (params?: { page?: number; limit?: number; search?: string }) => {
+  listUsers: (params?: { page?: number; limit?: number; search?: string; sinFicha?: boolean }) => {
     const qs = new URLSearchParams();
     if (params?.page)   qs.set('page',   String(params.page));
     if (params?.limit)  qs.set('limit',  String(params.limit));
     if (params?.search) qs.set('search', params.search);
+    if (params?.sinFicha) qs.set('sinFicha', 'true');
     return request<UserListResponse>(`/admin/users?${qs.toString()}`);
   },
 
@@ -255,7 +256,7 @@ export const adminApi = {
   // ── Asignación de usuario a trabajador ───────────────────────────
 
   createTrabajador: (dto: {
-    ci:               string;
+    ci?:              string;  // opcional: contratistas y temporales
     nomina:           string;
     puesto:           string;
     superintendencia?: string;
@@ -313,6 +314,13 @@ export const adminApi = {
     request<{ trabajador: Trabajador; user: { id: string; username: string } }>(
       `/admin/trabajadores/${trabajadorId}/assign-user`,
       { method: 'POST', body: JSON.stringify(dto) },
+    ),
+
+  /** Vincula una cuenta que ya existe y no tiene ficha. */
+  linkUserToTrabajador: (trabajadorId: string, userId: string) =>
+    request<Trabajador>(
+      `/admin/trabajadores/${trabajadorId}/link-user`,
+      { method: 'POST', body: JSON.stringify({ userId }) },
     ),
 
   unlinkUserFromTrabajador: (trabajadorId: string) =>
