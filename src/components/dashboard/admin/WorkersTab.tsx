@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControlLabel, Grid, InputAdornment, InputLabel,
+  FormControlLabel, Grid, InputAdornment,
   MenuItem, Switch,
   Snackbar, Stack, Table, TableBody, TableCell, TableFooter,
   TableHead, TablePagination, TableRow, TextField, Tooltip,
@@ -11,10 +11,11 @@ import {
 } from '@mui/material';
 import {
   SearchOutlined, RefreshOutlined, InfoOutlined,
-  PersonAddOutlined, LinkOffOutlined, EditOutlined, AddOutlined,
+  PersonAddOutlined, LinkOffOutlined, LinkOutlined, EditOutlined, AddOutlined,
 } from '@mui/icons-material';
 import { adminApi } from '@/lib/api';
 import type { Trabajador, Area } from '@/types/admin';
+import { VincularCuentaDialog } from './VincularCuentaDialog';
 
 // ── Password validation ────────────────────────────────────────────────
 function validatePwd(pwd: string): string | null {
@@ -275,7 +276,10 @@ function CreateTrabajadorDialog({ open, onClose, onSuccess, onError, onRefresh }
     }));
   };
 
-  const canSubmit = form.ci.trim() && form.nomina.trim() && form.puesto.trim()
+  // CI opcional (contratistas, personal temporal); si viene, 5–12 caracteres.
+  const ciLargo   = form.ci.trim().length;
+  const ciError   = ciLargo > 0 && ciLargo < 5;
+  const canSubmit = !ciError && form.nomina.trim() && form.puesto.trim()
     && (form.areaCodigo || form.superintendencia.trim());
 
   const handleCreate = async () => {
@@ -283,7 +287,7 @@ function CreateTrabajadorDialog({ open, onClose, onSuccess, onError, onRefresh }
     setSubmitting(true);
     try {
       const t = await adminApi.createTrabajador({
-        ci:               form.ci.trim(),
+        ci:               form.ci.trim() || undefined,
         nomina:           form.nomina.trim(),
         puesto:           form.puesto.trim(),
         superintendencia: form.superintendencia.trim() || undefined,
@@ -315,10 +319,11 @@ function CreateTrabajadorDialog({ open, onClose, onSuccess, onError, onRefresh }
         <Grid container spacing={2} sx={{ mt: 0.5 }}>
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
-              fullWidth size="small" label="CI *"
+              fullWidth size="small" label="CI"
               value={form.ci}
               onChange={(e) => setForm((p) => ({ ...p, ci: e.target.value.replace(/[^0-9A-Za-z-]/g, '') }))}
-              error={!form.ci.trim()} helperText={!form.ci.trim() ? 'Requerido' : '5–12 caracteres'}
+              error={ciError}
+              helperText={ciError ? 'Mínimo 5 caracteres' : 'Opcional (contratistas y temporales pueden no tenerlo)'}
               inputProps={{ maxLength: 12 }}
             />
           </Grid>
@@ -490,7 +495,7 @@ function EditTrabajadorDialog({ open, trabajador, onClose, onSuccess, onError, o
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
-        Editar trabajador — <Typography component="span" variant="inherit" color="primary">{trabajador?.ci}</Typography>
+        Editar trabajador — <Typography component="span" variant="inherit" color="primary">{trabajador?.ci ?? 'sin CI'}</Typography>
       </DialogTitle>
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -606,6 +611,8 @@ export function WorkersTab() {
 
   // Assign-user dialog
   const [assignTarget,   setAssignTarget]   = useState<Trabajador | null>(null);
+  // Vincular cuenta existente
+  const [linkTarget,     setLinkTarget]     = useState<Trabajador | null>(null);
   // Unlink confirm
   const [unlinkTarget,   setUnlinkTarget]   = useState<Trabajador | null>(null);
   const [unlinking,      setUnlinking]      = useState(false);
@@ -685,7 +692,8 @@ export function WorkersTab() {
       </Stack>
 
       <Alert severity="info" icon={<InfoOutlined />} sx={{ mb: 2, borderRadius: 2 }}>
-        Fuente: IAM Core (PostgreSQL). Usa el botón <strong>PersonAdd</strong> para crear un usuario IAM y vincularlo a un trabajador.
+        Fuente: IAM Core (PostgreSQL). En cada trabajador sin cuenta: <strong>crear</strong> una cuenta nueva
+        o <strong>vincular</strong> una que ya existe (creada antes de tener ficha).
       </Alert>
 
       {/* Search */}
@@ -743,9 +751,15 @@ export function WorkersTab() {
               workers.map((w) => (
                 <TableRow key={w.id} hover>
                   <TableCell>
-                    <Typography variant="caption" fontFamily="monospace" fontWeight={700}>
-                      {w.ci}
-                    </Typography>
+                    {w.ci ? (
+                      <Typography variant="caption" fontFamily="monospace" fontWeight={700}>
+                        {w.ci}
+                      </Typography>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary" fontStyle="italic">
+                        Sin CI
+                      </Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" fontWeight={600}>{w.nomina}</Typography>
@@ -792,12 +806,19 @@ export function WorkersTab() {
                         </IconButton>
                       </Tooltip>
 
-                      {!w.tieneAccesoSistema ? (
-                        <Tooltip title="Crear usuario IAM y vincular">
-                          <IconButton size="small" color="success" onClick={() => setAssignTarget(w)}>
-                            <PersonAddOutlined fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                      {!w.user ? (
+                        <>
+                          <Tooltip title="Crear usuario IAM y vincular">
+                            <IconButton size="small" color="success" onClick={() => setAssignTarget(w)}>
+                              <PersonAddOutlined fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Vincular una cuenta que ya existe">
+                            <IconButton size="small" color="primary" onClick={() => setLinkTarget(w)}>
+                              <LinkOutlined fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </>
                       ) : (
                         <Tooltip title={`Desvincular usuario @${w.user?.username ?? ''}`}>
                           <IconButton size="small" color="warning" onClick={() => setUnlinkTarget(w)}>
@@ -855,6 +876,15 @@ export function WorkersTab() {
         open={assignTarget !== null}
         trabajador={assignTarget}
         onClose={() => setAssignTarget(null)}
+        onSuccess={(msg) => notify(msg)}
+        onError={(msg) => notify(msg, 'error')}
+        onRefresh={() => void load()}
+      />
+
+      <VincularCuentaDialog
+        open={linkTarget !== null}
+        trabajador={linkTarget}
+        onClose={() => setLinkTarget(null)}
         onSuccess={(msg) => notify(msg)}
         onError={(msg) => notify(msg, 'error')}
         onRefresh={() => void load()}
