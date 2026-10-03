@@ -19,8 +19,9 @@ const IAM_URL = process.env.IAM_API_URL ?? 'http://localhost:4000/api';
 // ── Tipos de resultado ─────────────────────────────────────────────
 
 export type AuthResult =
-  | { ok: true; requires2FA?: false; user: unknown }
-  | { ok: true; requires2FA: true; tempToken: string; message: string }
+  | { ok: true; requires2FA?: false; requiresPasswordChange?: false; user: unknown }
+  | { ok: true; requires2FA: true; requiresPasswordChange?: false; tempToken: string; message: string }
+  | { ok: true; requiresPasswordChange: true; requires2FA?: false; tempToken: string; message: string }
   | { ok: false; error: string };
 
 // ── Helper: sincronizar Set-Cookie del backend → browser ───────────
@@ -67,6 +68,16 @@ export async function loginAction(
       return { ok: false, error: data.message ?? 'Credenciales inválidas' };
     }
 
+    // Contraseña provisional → elegir una propia antes de cualquier sesión
+    if (data.requiresPasswordChange) {
+      return {
+        ok:                     true,
+        requiresPasswordChange: true,
+        tempToken:              data.tempToken,
+        message:                data.message,
+      };
+    }
+
     // Requiere 2FA → devolver tempToken sin setear cookies
     if (data.requires2FA) {
       return {
@@ -78,6 +89,48 @@ export async function loginAction(
     }
 
     // Login exitoso → sincronizar cookies del backend al browser
+    await syncCookies(res);
+    return { ok: true, user: data.user };
+
+  } catch {
+    return { ok: false, error: 'Error de conexión con el servidor' };
+  }
+}
+
+// ── CAMBIO DE CONTRASEÑA OBLIGATORIO ──────────────────────────────
+
+/** Segundo paso del login de una cuenta con contraseña provisional. */
+export async function cambiarClaveLoginAction(
+  tempToken:   string,
+  newPassword: string,
+): Promise<AuthResult> {
+  try {
+    const res  = await fetch(`${IAM_URL}/auth/login/cambiar-clave`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ tempToken, newPassword }),
+      cache:   'no-store',
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      // El filtro de errores del IAM pone el motivo en `error` (texto o lista de validación)
+      const motivo = data.error ?? data.message;
+      const msg    = Array.isArray(motivo) ? motivo[0] : motivo;
+      return { ok: false, error: msg ?? 'No se pudo cambiar la contraseña' };
+    }
+
+    // Con 2FA activo todavía falta el código
+    if (data.requires2FA) {
+      return {
+        ok:          true,
+        requires2FA: true,
+        tempToken:   data.tempToken,
+        message:     data.message,
+      };
+    }
+
     await syncCookies(res);
     return { ok: true, user: data.user };
 
