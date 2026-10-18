@@ -1,8 +1,9 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Avatar, Box, Button, Chip, CircularProgress,
+  Alert, Avatar, Box, Button, Checkbox, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle,
+  FormControlLabel, FormGroup, FormHelperText,
   IconButton, InputAdornment, Menu, MenuItem,
   Pagination, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, TextField, Tooltip, Typography,
@@ -345,7 +346,7 @@ export function UsersTab() {
             onClick={() => { setRoleTarget(menuUser); closeMenu(); }}
           >
             <ManageAccountsOutlined fontSize="small" sx={{ mr: 1.5, color: 'primary.main' }} />
-            <Typography variant="body2">Cambiar rol</Typography>
+            <Typography variant="body2">Cambiar roles</Typography>
           </MenuItem>,
           <MenuItem
             key="services"
@@ -488,7 +489,7 @@ function ResetPasswordDialog({ user, onClose, notify }: ResetDialogProps) {
   );
 }
 
-// ── ChangeRoleDialog (rol GLOBAL del usuario) ─────────────────────────
+// ── ChangeRoleDialog (roles GLOBALES del usuario) ─────────────────────
 
 interface ChangeRoleDialogProps {
   user:    AdminUser;
@@ -497,8 +498,16 @@ interface ChangeRoleDialogProps {
   notify:  (msg: string, sev?: 'success' | 'error') => void;
 }
 
+/**
+ * Un usuario puede tener **varios** roles: `User.roles` es una lista y el
+ * token los lleva todos. Antes este diálogo elegía uno solo y guardaba
+ * `[rol]`, así que dar un rol adicional (p. ej. `monitoreo_confiabilidad` a
+ * un técnico) le quitaba el que tenía, y abrir y guardar el diálogo a quien
+ * ya tenía dos le borraba el segundo sin avisar.
+ */
 function ChangeRoleDialog({ user, onClose, onSaved, notify }: ChangeRoleDialogProps) {
-  const [role, setRole] = useState(user.roles?.[0] ?? 'tecnico');
+  const [actuales] = useState<string[]>(() => user.roles ?? []);
+  const [elegidos, setElegidos] = useState<string[]>(actuales);
   const [saving, setSaving] = useState(false);
   const [roles, setRoles] = useState<{ slug: string; label: string }[]>([]);
   const [cargandoRoles, setCargandoRoles] = useState(true);
@@ -507,32 +516,40 @@ function ChangeRoleDialog({ user, onClose, onSaved, notify }: ChangeRoleDialogPr
   // creado en IAM aparece aquí sin desplegar el portal.
   useEffect(() => {
     let vivo = true;
+    // Los roles que ya tiene van siempre, aunque su servicio esté inactivo o
+    // los hayan quitado del catálogo: si no se ven, guardar se los quitaría.
+    const conActuales = (disponibles: { slug: string; label: string }[]) => {
+      for (const r of [...actuales].reverse()) {
+        if (!disponibles.some((d) => d.slug === r)) {
+          disponibles.unshift({ slug: r, label: labelDeRol(r) });
+        }
+      }
+      return disponibles;
+    };
     adminApi
       .listServices()
       .then((services) => {
-        if (!vivo) return;
-        const disponibles = rolesAsignables(services);
-        // Incluir el rol actual aunque su servicio esté inactivo o lo hayan
-        // quitado del catálogo, para no cambiárselo sin querer al guardar.
-        if (role && !disponibles.some((r) => r.slug === role)) {
-          disponibles.unshift({ slug: role, label: labelDeRol(role) });
-        }
-        setRoles(disponibles);
+        if (vivo) setRoles(conActuales(rolesAsignables(services)));
       })
       .catch(() => {
-        if (vivo) setRoles([{ slug: role, label: labelDeRol(role) }]);
+        if (vivo) setRoles(conActuales([]));
       })
       .finally(() => vivo && setCargandoRoles(false));
     return () => {
       vivo = false;
     };
-  }, [role]);
+  }, [actuales]);
+
+  const alternar = (slug: string) =>
+    setElegidos((prev) =>
+      prev.includes(slug) ? prev.filter((r) => r !== slug) : [...prev, slug],
+    );
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await adminApi.updateUser(user.id, { roles: [role] });
-      notify(`Rol de @${user.username} actualizado a '${role}'`);
+      await adminApi.updateUser(user.id, { roles: elegidos });
+      notify(`Roles de @${user.username}: ${elegidos.map(labelDeRol).join(', ')}`);
       onSaved();
     } catch (err: unknown) {
       notify((err as { message?: string }).message ?? 'Error al cambiar el rol', 'error');
@@ -543,26 +560,41 @@ function ChangeRoleDialog({ user, onClose, onSaved, notify }: ChangeRoleDialogPr
 
   return (
     <Dialog open onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-      <DialogTitle fontWeight={700}>Rol de @{user.username}</DialogTitle>
+      <DialogTitle fontWeight={700}>Roles de @{user.username}</DialogTitle>
       <DialogContent dividers>
         <Typography variant="body2" color="text.secondary" mb={2}>
-          El rol es global: aplica a todos los servicios a los que el usuario tiene acceso.
-          Los permisos de cada rol se definen por servicio en la pestaña <b>Roles y Permisos</b>.
+          Puede tener varios. Los roles son globales: aplican a todos los servicios a los que
+          el usuario tiene acceso. Los permisos de cada rol se definen por servicio en la
+          pestaña <b>Roles y Permisos</b>.
         </Typography>
-        <TextField
-          select fullWidth label="Rol" value={role} disabled={cargandoRoles}
-          helperText={cargandoRoles ? 'Cargando roles disponibles…' : undefined}
-          onChange={(e) => setRole(e.target.value)} SelectProps={{ native: true }}
-        >
-          {roles.map((r) => (
-            <option key={r.slug} value={r.slug}>{r.label}</option>
-          ))}
-        </TextField>
+        {cargandoRoles ? (
+          <Typography variant="body2" color="text.secondary">Cargando roles disponibles…</Typography>
+        ) : (
+          <FormGroup>
+            {roles.map((r) => (
+              <FormControlLabel
+                key={r.slug}
+                label={r.label}
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={elegidos.includes(r.slug)}
+                    onChange={() => alternar(r.slug)}
+                  />
+                }
+              />
+            ))}
+          </FormGroup>
+        )}
+        {!cargandoRoles && elegidos.length === 0 && (
+          <FormHelperText error>Elija al menos un rol.</FormHelperText>
+        )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
         <Button type="button" onClick={onClose}>Cancelar</Button>
         <Button
-          type="button" variant="contained" onClick={handleSave} disabled={saving}
+          type="button" variant="contained" onClick={handleSave}
+          disabled={saving || cargandoRoles || elegidos.length === 0}
           startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
         >
           {saving ? 'Guardando…' : 'Guardar'}

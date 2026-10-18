@@ -16,15 +16,12 @@ import {
 import { adminApi } from '@/lib/api';
 import type { Trabajador, Area } from '@/types/admin';
 import { VincularCuentaDialog } from './VincularCuentaDialog';
+import { faltaEnClave } from '@/lib/reglaClave';
 
 // ── Password validation ────────────────────────────────────────────────
 function validatePwd(pwd: string): string | null {
-  if (pwd.length < 8)                       return 'Mínimo 8 caracteres';
-  if (!/[A-Z]/.test(pwd))                   return 'Falta mayúscula';
-  if (!/[a-z]/.test(pwd))                   return 'Falta minúscula';
-  if (!/\d/.test(pwd))                      return 'Falta número';
-  if (!/[@$!%*?&]/.test(pwd))              return 'Falta símbolo (@$!%*?&)';
-  return null;
+  const falta = faltaEnClave(pwd);
+  return falta ? `Falta: ${falta.toLowerCase()}` : null;
 }
 
 // Etiquetas legibles de los roles conocidos. Es solo cosmético: el catálogo

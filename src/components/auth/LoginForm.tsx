@@ -196,6 +196,12 @@ export function LoginForm() {
           />
         ) : (<>
 
+        {searchParams.get('clave') === 'cambiada' && !apiError && (
+          <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+            Contraseña cambiada. Inicia sesión con la nueva.
+          </Alert>
+        )}
+
         {/* Error de API */}
         {apiError && (
           <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setApiError(null)}>

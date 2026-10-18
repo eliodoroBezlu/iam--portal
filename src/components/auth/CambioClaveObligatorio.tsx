@@ -8,17 +8,11 @@ import {
 } from '@mui/material';
 import { KeyOutlined } from '@mui/icons-material';
 import { cambiarClaveLoginAction } from '@/app/actions/auth';
+import { claveNuevaSchema } from '@/lib/reglaClave';
 
-// Mismas reglas que el IAM (ChangePasswordDto): así el error aparece antes de enviar.
-const ESPECIALES = '@$!%*?&';
+// Mismas reglas que el IAM: así el error aparece antes de enviar.
 const schema = z.object({
-  nueva: z.string()
-    .min(8, 'Mínimo 8 caracteres')
-    .regex(/[a-z]/, 'Falta una minúscula')
-    .regex(/[A-Z]/, 'Falta una mayúscula')
-    .regex(/\d/,    'Falta un número')
-    .regex(/[@$!%*?&]/, `Falta un carácter especial (${ESPECIALES})`)
-    .regex(/^[A-Za-z\d@$!%*?&]+$/, `Solo letras sin tilde, números y ${ESPECIALES}`),
+  nueva: claveNuevaSchema,
   confirmar: z.string().min(1, 'Repite la contraseña'),
 }).refine((d) => d.nueva === d.confirmar, {
   path:    ['confirmar'],
@@ -82,7 +76,7 @@ export function CambioClaveObligatorio({ tempToken, mensaje, onListo, onVolver }
           autoComplete="new-password"
           error={!!errors.nueva}
           helperText={errors.nueva?.message
-            ?? `Mínimo 8, con mayúscula, minúscula, número y uno de ${ESPECIALES}`}
+            ?? 'Mínimo 8, con mayúscula, minúscula, número y un carácter especial (# . @ - _ …)'}
         />
 
         <TextField

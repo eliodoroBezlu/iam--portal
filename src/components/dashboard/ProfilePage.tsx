@@ -19,6 +19,8 @@ import {
   AddOutlined,
 } from '@mui/icons-material';
 import { authApi, webAuthnApi, type WebAuthnCredential } from '@/lib/api';
+import { claveNuevaSchema } from '@/lib/reglaClave';
+import { logoutAction } from '@/app/actions/auth';
 import type { IamUser, Session, TotpSetupResponse } from '@/types';
 import {
   startRegistration,
@@ -29,10 +31,7 @@ import {
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(1, 'Requerido'),
-  newPassword:     z.string().min(8, 'Mínimo 8 caracteres')
-    .regex(/[A-Z]/,  'Debe contener una mayúscula')
-    .regex(/[0-9]/,  'Debe contener un número')
-    .regex(/[^A-Za-z0-9]/, 'Debe contener un carácter especial'),
+  newPassword:     claveNuevaSchema,
   confirmPassword: z.string().min(1, 'Requerido'),
 }).refine((d) => d.newPassword === d.confirmPassword, {
   message: 'Las contraseñas no coinciden',
@@ -225,7 +224,6 @@ function PasswordCard({ notify }: { notify: (msg: string, sev?: 'success' | 'err
   const {
     register,
     handleSubmit,
-    reset,
     formState: { errors, isSubmitting },
   } = useForm<PasswordFormData>({
     resolver: zodResolver(passwordSchema),
@@ -235,8 +233,10 @@ function PasswordCard({ notify }: { notify: (msg: string, sev?: 'success' | 'err
   const onSubmit = async (data: PasswordFormData) => {
     try {
       await authApi.changePassword(data.currentPassword, data.newPassword);
-      notify('Contraseña actualizada correctamente.');
-      reset();
+      // El IAM cerró todas las sesiones, también esta: se limpia la local y se
+      // vuelve a entrar con la nueva.
+      await logoutAction();
+      window.location.assign('/login?clave=cambiada');
     } catch (err: unknown) {
       notify((err as { message?: string }).message ?? 'No se pudo actualizar la contraseña.', 'error');
     }
